@@ -1,6 +1,7 @@
 from bs4 import BeautifulSoup
 import requests
 import csv
+import time
 
 class FDroid_Crawler:
 
@@ -34,6 +35,13 @@ class FDroid_Crawler:
         else:
             raise Exception("need to add unknown type:",app_size)
 
+    def webpage_request(self,link):
+        response = requests.get(link)
+        while response.status_code != 200:
+            time.sleep(2)
+            response = requests.get(link)
+        return response
+
 
     def prcoess_links(self,linklist):
         # get all apps in the list
@@ -48,7 +56,7 @@ class FDroid_Crawler:
         print("process start...")
         for url in linklist:
             #print(url)
-            url_page = requests.get(url)
+            url_page = self.webpage_request(url)
 
             # url_page.data is the result
             url_page_soup = BeautifulSoup(url_page.content, "html.parser")
@@ -61,7 +69,7 @@ class FDroid_Crawler:
 
                     # the target url of the package
                     full_package_url = self.domain+relative_package_url
-
+                    print(full_package_url)
 
                     #（1） app id
                     app_id = appid_index
@@ -74,10 +82,11 @@ class FDroid_Crawler:
                     result_list.append(package_name)
                     print("process package:",package_name)
 
-                    package_page = requests.get(full_package_url)
+                    package_page = self.webpage_request(full_package_url)
                     package_soup = BeautifulSoup(package_page.content, "html.parser")
                     # (3) app name
-                    app_name = package_soup.find(attrs={'class':"package-name"}).text.strip()
+                    package_title_div = package_soup.find(attrs={'class':"package-title"})
+                    app_name = package_title_div.find(attrs={'class':"package-name"}).text.strip()
                     result_list.append(app_name)
 
                     # (4) version
@@ -131,12 +140,13 @@ class FDroid_Crawler:
 
                     google_play_url_request = requests.get(google_play_url)
                     google_play_url_soup = BeautifulSoup(google_play_url_request.content,"html.parser")
-                    found_not_match_statement = google_play_url_soup.findAll(text="We're sorry, the requested URL was not found on this server.")
-                    # number of installation
+                    error_section = google_play_url_soup.findAll(attrs={'id':'error-section'})
+                    # (9) number of installation
 
-                    if len(found_not_match_statement)>=1:
+                    if len(error_section)>=1:
                         on_google = False
                     else:
+
                         google_search_request = requests.get("https://play.google.com/store/search?q="+package_name+"&c=apps&hl=en")
                         google_search_soup = BeautifulSoup(google_search_request.content, "html.parser")
                         search_found_not_match_statement = google_search_soup.findAll(attrs={'class':'empty-search'})
@@ -158,11 +168,14 @@ class FDroid_Crawler:
 
                     result_list.append(google_play_url)
 
-                    num_download_div = google_play_url_soup.find(attrs={'itemprop':'numDownloads'})
-                    num_download = num_download_div.text.strip()
+                    num_download_div = google_play_url_soup.find_all(attrs={'itemprop':'numDownloads'})
+                    if (num_download_div is None) or len(num_download_div)==0:
+                        num_download  = "Nil"
+                    else:
+                        num_download = num_download_div[0].text.strip()
                     result_list.append(num_download)
 
-                    # app category
+                    # (10) app category
                     app_category_div = google_play_url_soup.find(attrs={'class':'document-subtitle category'})
                     app_category = app_category_div.find(attrs={'itemprop':'genre'}).text
                     result_list.append(app_category)
